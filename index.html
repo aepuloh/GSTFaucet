@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GST Faucet</title>
-  <!-- Ethers.js UMD untuk global window.ethers -->
+  <title>GST Faucet 24h</title>
+  <!-- Ethers.js UMD untuk MetaMask dApp -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body {
@@ -44,11 +44,11 @@
   </style>
 </head>
 <body>
-  <h1>Gemoy Spirit Token (GST) Faucet</h1>
-  <p>Claim gratis <b>1 GST</b> (sekali klaim per address)</p>
+  <h1>Gemoy Spirit Token (GST) Faucet 24h</h1>
+  <p>Claim gratis <b>1 GST</b> (sekali klaim tiap 24 jam)</p>
   
   <button id="connectBtn">🔗 Connect Wallet</button>
-  <button id="claimBtn">💧 Claim 1 GST</button>
+  <button id="claimBtn">💧 Claim GST</button>
   
   <div id="status">Not connected</div>
 
@@ -67,7 +67,7 @@
 
     const faucetABI = [
       "function claim() external",
-      "function claimed(address) view returns (bool)",
+      "function lastClaimTime(address) view returns (uint256)",
       "function faucetBalance() view returns (uint256)",
       "function amountPerClaim() view returns (uint256)",
       "function setAmountPerClaim(uint256 _amount) external",
@@ -109,17 +109,22 @@
       if (!contract) return alert("Connect wallet first!");
       try {
         const address = await signer.getAddress();
-        const already = await contract.claimed(address);
-        if (already) return alert("❌ You already claimed!");
+        const lastTime = await contract.lastClaimTime(address);
+        const now = Math.floor(Date.now() / 1000);
+        if (now - lastTime < 24*3600) {
+          const remaining = 24*3600 - (now - lastTime);
+          return alert(`⏳ Wait ${Math.floor(remaining/3600)}h ${Math.floor((remaining%3600)/60)}m before next claim`);
+        }
 
         const tx = await contract.claim();
         document.getElementById("status").innerText = "⏳ Claiming... tx: " + tx.hash;
         await tx.wait();
         document.getElementById("status").innerText = "✅ Success! You got GST 🎉";
         loadFaucetBalance();
+
       } catch (err) {
         console.error(err);
-        alert("Error: " + (err.data?.message || err.message));
+        alert("❌ " + (err.data?.message || err.message));
       }
     });
 
@@ -144,7 +149,7 @@
         alert("✅ Claim amount updated!");
         loadFaucetBalance();
       } catch (err) {
-        alert("Error: " + (err.data?.message || err.message));
+        alert("❌ Error: " + (err.data?.message || err.message));
       }
     });
 
@@ -156,9 +161,10 @@
         alert("✅ Withdraw success!");
         loadFaucetBalance();
       } catch (err) {
-        alert("Error: " + (err.data?.message || err.message));
+        alert("❌ Error: " + (err.data?.message || err.message));
       }
     });
+
   </script>
 </body>
 </html>
