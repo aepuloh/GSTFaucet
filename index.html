@@ -45,17 +45,19 @@
 <body>
   <h1>Gemoy Spirit Token (GST) Faucet</h1>
   <p>Claim gratis <b>1 GST</b> (sekali klaim per address)</p>
-  <button onclick="connectWallet()">🔗 Connect Wallet</button>
-  <button onclick="claimToken()">💧 Claim 1 GST</button>
-  <div id="status"></div>
+  
+  <button id="connectBtn">🔗 Connect Wallet</button>
+  <button id="claimBtn">💧 Claim 1 GST</button>
+  
+  <div id="status">Not connected</div>
 
   <!-- ADMIN PANEL -->
   <div id="adminPanel">
     <h2>⚙️ Admin Panel</h2>
     <p><b>Faucet Balance:</b> <span id="faucetBalance">Loading...</span></p>
     <input id="amount" type="number" placeholder="Set claim amount" />
-    <button onclick="setClaimAmount()">Set Amount</button><br/>
-    <button onclick="withdraw()">Withdraw All</button>
+    <button id="setAmountBtn">Set Amount</button><br/>
+    <button id="withdrawBtn">Withdraw All</button>
   </div>
 
   <script>
@@ -73,45 +75,55 @@
 
     let provider, signer, contract;
 
-    async function connectWallet() {
-      if (window.ethereum) {
+    // Connect Wallet
+    document.getElementById("connectBtn").addEventListener("click", async () => {
+      if (!window.ethereum) {
+        alert("❌ MetaMask not detected!");
+        return;
+      }
+
+      try {
         provider = new ethers.providers.Web3Provider(window.ethereum);
         await provider.send("eth_requestAccounts", []);
         signer = provider.getSigner();
         contract = new ethers.Contract(faucetAddress, faucetABI, signer);
 
         const address = await signer.getAddress();
-        document.getElementById("status").innerText = "Wallet connected: " + address;
+        document.getElementById("status").innerText = "✅ Wallet connected: " + address;
 
-        // Check if admin
+        // Show admin panel for owner
         if (address.toLowerCase() === ownerAddress.toLowerCase()) {
           document.getElementById("adminPanel").style.display = "block";
           loadFaucetBalance();
         }
-      } else {
-        alert("MetaMask not detected!");
+      } catch (err) {
+        console.error("Connect error:", err);
+        alert("❌ Connect failed: " + (err.data?.message || err.message));
       }
-    }
+    });
 
-    async function claimToken() {
+    // Claim GST
+    document.getElementById("claimBtn").addEventListener("click", async () => {
       if (!contract) return alert("Connect wallet first!");
       try {
         const address = await signer.getAddress();
         const already = await contract.claimed(address);
-        if (already) {
-          return alert("❌ You already claimed!");
-        }
+        if (already) return alert("❌ You already claimed!");
+
         const tx = await contract.claim();
         document.getElementById("status").innerText = "⏳ Claiming... tx: " + tx.hash;
         await tx.wait();
         document.getElementById("status").innerText = "✅ Success! You got GST 🎉";
+        loadFaucetBalance();
       } catch (err) {
         console.error(err);
         alert("Error: " + (err.data?.message || err.message));
       }
-    }
+    });
 
+    // Load faucet balance (admin)
     async function loadFaucetBalance() {
+      if (!contract) return;
       try {
         const balance = await contract.faucetBalance();
         document.getElementById("faucetBalance").innerText = balance.toString() + " GST";
@@ -120,7 +132,8 @@
       }
     }
 
-    async function setClaimAmount() {
+    // Set claim amount (admin)
+    document.getElementById("setAmountBtn").addEventListener("click", async () => {
       const amount = document.getElementById("amount").value;
       if (!amount) return alert("Enter amount");
       try {
@@ -131,9 +144,10 @@
       } catch (err) {
         alert("Error: " + (err.data?.message || err.message));
       }
-    }
+    });
 
-    async function withdraw() {
+    // Withdraw all tokens (admin)
+    document.getElementById("withdrawBtn").addEventListener("click", async () => {
       try {
         const tx = await contract.withdraw();
         await tx.wait();
@@ -142,7 +156,7 @@
       } catch (err) {
         alert("Error: " + (err.data?.message || err.message));
       }
-    }
+    });
   </script>
 </body>
 </html>
