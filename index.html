@@ -3,14 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GST Faucet 24h</title>
-
-  <!-- Ethers.js UMD -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <!-- Web3Modal & WalletConnect -->
-  <script src="https://unpkg.com/web3modal@1.9.8/dist/index.js"></script>
-  <script src="https://unpkg.com/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
-
+  <title>GST Faucet</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@web3modal/ethereum@2.7.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@web3modal/html@2.7.1"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -49,101 +45,94 @@
   </style>
 </head>
 <body>
-  <h1>Gemoy Spirit Token (GST) Faucet 24h</h1>
-  <p>Claim gratis <b>1 GST</b> (sekali klaim tiap 24 jam)</p>
-
-  <button id="connectBtn">🔗 Connect Wallet</button>
-  <button id="claimBtn">💧 Claim GST</button>
-
-  <div id="status">Not connected</div>
+  <h1>Gemoy Spirit Token (GST) Faucet</h1>
+  <p>Claim gratis <b>1 GST</b> (sekali klaim / 24 jam / address)</p>
+  <button onclick="connectWallet()">🔗 Connect Wallet</button>
+  <button onclick="claimToken()">💧 Claim 1 GST</button>
+  <div id="status"></div>
 
   <!-- ADMIN PANEL -->
   <div id="adminPanel">
     <h2>⚙️ Admin Panel</h2>
     <p><b>Faucet Balance:</b> <span id="faucetBalance">Loading...</span></p>
     <input id="amount" type="number" placeholder="Set claim amount" />
-    <button id="setAmountBtn">Set Amount</button><br/>
-    <button id="withdrawBtn">Withdraw All</button>
+    <button onclick="setClaimAmount()">Set Amount</button><br/>
+    <button onclick="withdraw()">Withdraw All</button>
   </div>
 
   <script>
-    const faucetAddress = "0x0ebf36664E3d1d3eE0a569CCA0FaA30d1211B7B4";
-    const ownerAddress = "0xF93219E5cA825B58A53Dfa7625Ce8962d60c2DAb";
+    const faucetAddress = "0x0ebf36664E3d1d3eE0a569CCA0FaA30d1211B7B4"; // contract faucet
+    const ownerAddress  = "0xF93219E5cA825B58A53Dfa7625Ce8962d60c2DAb"; // admin
 
     const faucetABI = [
       "function claim() external",
-      "function lastClaimTime(address) view returns (uint256)",
+      "function claimed(address) view returns (bool)",
       "function faucetBalance() view returns (uint256)",
       "function amountPerClaim() view returns (uint256)",
       "function setAmountPerClaim(uint256 _amount) external",
       "function withdraw() external"
     ];
 
-    let web3Modal;
     let provider, signer, contract;
-
-    window.addEventListener('load', async () => {
-      const providerOptions = {
-        walletconnect: {
-          package: window.WalletConnectProvider.default,
-          options: {
-            rpc: { 11155111: "https://sepolia.infura.io/v3/YOUR_INFURA_ID" }
-          }
-        }
-      };
-      web3Modal = new window.Web3Modal.default({ cacheProvider: false, providerOptions });
-    });
 
     async function connectWallet() {
       try {
-        const instance = await web3Modal.connect();
-        provider = new window.ethers.providers.Web3Provider(instance);
+        if (window.ethereum) {
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          await provider.send("eth_requestAccounts", []);
+        } else {
+          // fallback ke wallet lain (web3modal)
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+        }
+
         signer = provider.getSigner();
-        contract = new window.ethers.Contract(faucetAddress, faucetABI, signer);
+        contract = new ethers.Contract(faucetAddress, faucetABI, signer);
 
         const address = await signer.getAddress();
-        document.getElementById("status").innerText = "✅ Wallet connected: " + address;
+        document.getElementById("status").innerText = "Wallet connected: " + address;
 
+        // tampilkan admin panel kalau owner
         if (address.toLowerCase() === ownerAddress.toLowerCase()) {
           document.getElementById("adminPanel").style.display = "block";
           loadFaucetBalance();
         }
-
       } catch (err) {
         console.error(err);
-        alert("❌ Connect failed: " + (err.data?.message || err.message));
+        alert("❌ Connect wallet failed: " + err.message);
       }
     }
 
-    document.getElementById("connectBtn").addEventListener("click", connectWallet);
+    async function claimToken() {
+      if (!contract) return alert("⚠️ Connect wallet dulu!");
 
-    // Claim GST per address 24h
-    document.getElementById("claimBtn").addEventListener("click", async () => {
-      if (!contract) return alert("Connect wallet first!");
       try {
         const address = await signer.getAddress();
-        const lastTime = await contract.lastClaimTime(address);
-        const now = Math.floor(Date.now() / 1000);
-        if (now - lastTime < 24*3600) {
-          const remaining = 24*3600 - (now - lastTime);
-          return alert(`⏳ Wait ${Math.floor(remaining/3600)}h ${Math.floor((remaining%3600)/60)}m before next claim`);
+
+        // ✅ Cek apakah sudah klaim 24 jam terakhir
+        const already = await contract.claimed(address);
+        if (already) {
+          return alert("❌ Kamu sudah klaim dalam 24 jam terakhir, tunggu besok ya!");
         }
 
+        // ✅ Cek saldo faucet
+        const balance = await contract.faucetBalance();
+        if (balance.eq(0)) {
+          return alert("⚠️ Faucet kosong, tunggu admin isi lagi!");
+        }
+
+        // ✅ Jalankan claim
         const tx = await contract.claim();
         document.getElementById("status").innerText = "⏳ Claiming... tx: " + tx.hash;
         await tx.wait();
-        document.getElementById("status").innerText = "✅ Success! You got GST 🎉";
-        loadFaucetBalance();
+        document.getElementById("status").innerText = "✅ Success! Kamu dapat GST 🎉";
 
       } catch (err) {
         console.error(err);
-        alert("❌ " + (err.data?.message || err.message));
+        alert("Error: " + (err.data?.message || err.message));
       }
-    });
+    }
 
-    // Admin functions
     async function loadFaucetBalance() {
-      if (!contract) return;
       try {
         const balance = await contract.faucetBalance();
         document.getElementById("faucetBalance").innerText = balance.toString() + " GST";
@@ -152,7 +141,7 @@
       }
     }
 
-    document.getElementById("setAmountBtn").addEventListener("click", async () => {
+    async function setClaimAmount() {
       const amount = document.getElementById("amount").value;
       if (!amount) return alert("Enter amount");
       try {
@@ -161,21 +150,20 @@
         alert("✅ Claim amount updated!");
         loadFaucetBalance();
       } catch (err) {
-        alert("❌ Error: " + (err.data?.message || err.message));
+        alert("Error: " + (err.data?.message || err.message));
       }
-    });
+    }
 
-    document.getElementById("withdrawBtn").addEventListener("click", async () => {
+    async function withdraw() {
       try {
         const tx = await contract.withdraw();
         await tx.wait();
         alert("✅ Withdraw success!");
         loadFaucetBalance();
       } catch (err) {
-        alert("❌ Error: " + (err.data?.message || err.message));
+        alert("Error: " + (err.data?.message || err.message));
       }
-    });
-
+    }
   </script>
 </body>
 </html>
