@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GST Faucet</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 40px;
+      background: #0d1117;
+      color: #f0f6fc;
+    }
+    h1 { color: #00d084; }
+    button {
+      padding: 12px 25px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      background: #00d084;
+      color: #0d1117;
+      font-weight: bold;
+    }
+    #status { margin-top: 20px; font-size: 14px; color: #58a6ff; }
+    #adminPanel {
+      margin-top: 40px;
+      padding: 20px;
+      border: 2px solid #00d084;
+      border-radius: 15px;
+      display: none;
+      background: #161b22;
+    }
+    input {
+      padding: 8px;
+      border-radius: 5px;
+      border: none;
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gemoy Spirit Token (GST) Faucet</h1>
+  <p>Claim gratis <b>1 GST</b> (sekali klaim per address)</p>
+  <button onclick="connectWallet()">🔗 Connect Wallet</button>
+  <button onclick="claimToken()">💧 Claim 1 GST</button>
+  <div id="status"></div>
+
+  <!-- ADMIN PANEL -->
+  <div id="adminPanel">
+    <h2>⚙️ Admin Panel</h2>
+    <p><b>Faucet Balance:</b> <span id="faucetBalance">Loading...</span></p>
+    <input id="amount" type="number" placeholder="Set claim amount" />
+    <button onclick="setClaimAmount()">Set Amount</button><br/>
+    <button onclick="withdraw()">Withdraw All</button>
+  </div>
+
+  <script>
+    const faucetAddress = "0x0ebf36664E3d1d3eE0a569CCA0FaA30d1211B7B4";
+    const ownerAddress = "0xF93219E5cA825B58A53Dfa7625Ce8962d60c2DAb";
+    
+    const faucetABI = [
+      "function claim() external",
+      "function claimed(address) view returns (bool)",
+      "function faucetBalance() view returns (uint256)",
+      "function amountPerClaim() view returns (uint256)",
+      "function setAmountPerClaim(uint256 _amount) external",
+      "function withdraw() external"
+    ];
+
+    let provider, signer, contract;
+
+    async function connectWallet() {
+      if (window.ethereum) {
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = provider.getSigner();
+        contract = new ethers.Contract(faucetAddress, faucetABI, signer);
+
+        const address = await signer.getAddress();
+        document.getElementById("status").innerText = "Wallet connected: " + address;
+
+        // Check if admin
+        if (address.toLowerCase() === ownerAddress.toLowerCase()) {
+          document.getElementById("adminPanel").style.display = "block";
+          loadFaucetBalance();
+        }
+      } else {
+        alert("MetaMask not detected!");
+      }
+    }
+
+    async function claimToken() {
+      if (!contract) return alert("Connect wallet first!");
+      try {
+        const address = await signer.getAddress();
+        const already = await contract.claimed(address);
+        if (already) {
+          return alert("❌ You already claimed!");
+        }
+        const tx = await contract.claim();
+        document.getElementById("status").innerText = "⏳ Claiming... tx: " + tx.hash;
+        await tx.wait();
+        document.getElementById("status").innerText = "✅ Success! You got GST 🎉";
+      } catch (err) {
+        console.error(err);
+        alert("Error: " + (err.data?.message || err.message));
+      }
+    }
+
+    async function loadFaucetBalance() {
+      try {
+        const balance = await contract.faucetBalance();
+        document.getElementById("faucetBalance").innerText = balance.toString() + " GST";
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function setClaimAmount() {
+      const amount = document.getElementById("amount").value;
+      if (!amount) return alert("Enter amount");
+      try {
+        const tx = await contract.setAmountPerClaim(amount);
+        await tx.wait();
+        alert("✅ Claim amount updated!");
+        loadFaucetBalance();
+      } catch (err) {
+        alert("Error: " + (err.data?.message || err.message));
+      }
+    }
+
+    async function withdraw() {
+      try {
+        const tx = await contract.withdraw();
+        await tx.wait();
+        alert("✅ Withdraw success!");
+        loadFaucetBalance();
+      } catch (err) {
+        alert("Error: " + (err.data?.message || err.message));
+      }
+    }
+  </script>
+</body>
+</html>
